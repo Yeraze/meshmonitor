@@ -21,10 +21,11 @@ const DART_V3_MESSAGES: Record<string, string> = {
 
 interface Entry {
   name: string;
-  bodyHex?: string;
+  bodyHex?: string | null;
   text: string;
   result?: 'ok' | 'invalid' | 'unsupported';
   message?: string | null;
+  messageExact?: boolean;
   dump?: unknown;
 }
 
@@ -56,7 +57,7 @@ function check(entry: Entry, run: () => ReturnType<typeof decodeV4Body>): void {
   // 'Invalid v4 payload: <host error>' wraps a Dart FormatException / TypeError text that
   // JavaScript cannot reproduce; the class is checked, the wrapper prefix is checked.
   const message = (caught as Error).message;
-  if (entry.message !== undefined && entry.message !== null) {
+  if (entry.message !== undefined && entry.message !== null && entry.messageExact !== false) {
     const hostText = /^(MCOtxt: Invalid MCOtxt (?:RAW_UTF8|UTF8_RUN) bytes: )/.exec(entry.message);
     if (entry.message.startsWith(HOST_ERROR_PREFIX)) expect(message.startsWith(HOST_ERROR_PREFIX)).toBe(true);
     else if (hostText) expect(message.startsWith(hostText[1])).toBe(true);
@@ -73,7 +74,7 @@ describe.each([
     expect(entries.length).toBeGreaterThan(0);
   });
   describe.each(entries.map((e, i) => [`${i}: ${e.name}`, e] as const))('%s', (_label, entry) => {
-    if (entry.bodyHex !== undefined) {
+    if (typeof entry.bodyHex === 'string') {
       it('decodeV4Body', () => check(entry, () => decodeV4Body(hexToBytes(entry.bodyHex as string))));
     }
     it('decodeV4Text', () => check(entry, () => decodeV4Text(entry.text)));

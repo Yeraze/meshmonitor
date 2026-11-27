@@ -212,7 +212,10 @@ export function decodeV4Text(text: string, limits: McoV4Limits = MCO_V4_DEFAULT_
   try {
     body = base91Decode(trimmed.substring(TEXT_PREFIX_V4.length));
   } catch (error) {
-    if (error instanceof McoImageV3CodecError) throw new McoImageV4InvalidPayloadError(error.message);
+    if (error instanceof McoImageV3CodecError) {
+      // _V4Base91.decode words its only failure this way (codec 4036-4040).
+      throw new McoImageV4InvalidPayloadError('Invalid MCOimg v4 Base91 character');
+    }
     throw error;
   }
   return decodeV4Body(body, limits);
