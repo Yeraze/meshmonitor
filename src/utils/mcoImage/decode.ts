@@ -3,6 +3,14 @@ import type { DecodedMcoImage } from './types.js';
 import { decodeV3Text } from './v3/decoder.js';
 import { McoImageV3CodecError } from './v3/errors.js';
 import { v3ToRgba } from './v3/rgba.js';
+import { collectV4Captions } from './v4/captions.js';
+import { decodeV4Text } from './v4/decoder.js';
+import {
+  McoImageV4CodecError,
+  McoImageV4InvalidPayloadError,
+  McoImageV4TooLargeError,
+  McoImageV4UnsupportedFormatError,
+} from './v4/errors.js';
 
 export { paintMcoImageV4 } from './v4/paint.js';
 export type { McoPaintOptions } from './v4/paint.js';
@@ -17,6 +25,38 @@ function remember(key: string, value: DecodedMcoImage | null): DecodedMcoImage |
     if (!oldest.done) cache.delete(oldest.value);
   }
   return value;
+}
+
+function decodeIm4(payload: string): DecodedMcoImage | null {
+  try {
+    const { document } = decodeV4Text(payload);
+    if (
+      document.width > MCO_IMAGE_MAX_DIMENSION ||
+      document.height > MCO_IMAGE_MAX_DIMENSION ||
+      document.width * document.height > MCO_IMAGE_MAX_PIXELS
+    ) {
+      return null;
+    }
+    return {
+      format: 'im4',
+      width: document.width,
+      height: document.height,
+      document,
+      captions: collectV4Captions(document),
+    };
+  } catch (err) {
+    // Damaged, unsupported (newer feature) and over-the-limits images all show as text.
+    if (err instanceof McoImageV4TooLargeError) {
+      console.debug('[mcoImage] im4 too complex to draw safely');
+    } else if (err instanceof McoImageV4UnsupportedFormatError) {
+      console.debug('[mcoImage] im4 uses an unsupported feature');
+    } else if (err instanceof McoImageV4InvalidPayloadError) {
+      console.debug('[mcoImage] im4 payload invalid');
+    } else if (!(err instanceof McoImageV3CodecError) && !(err instanceof McoImageV4CodecError)) {
+      console.debug('[mcoImage] unexpected decode failure', err);
+    }
+    return null;
+  }
 }
 
 /**
@@ -34,10 +74,7 @@ export function decodeMcoImageText(text: string): DecodedMcoImage | null {
     cache.set(key, hit);
     return hit;
   }
-  if (candidate.format === 'im4') {
-    // Gate A: the IM4 decoder lands in the next commit.
-    return remember(key, null);
-  }
+  if (candidate.format === 'im4') return remember(key, decodeIm4(candidate.payload));
   try {
     const v3 = decodeV3Text(candidate.payload);
     if (
