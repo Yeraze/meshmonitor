@@ -1,0 +1,65 @@
+.root {
+  position: relative;
+  display: inline-flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 0.25rem;
+  margin: 0.25rem 0;
+  max-width: 100%;
+}
+
+.canvas {
+  display: block;
+  max-width: 100%;
+  height: auto;
+  image-rendering: pixelated;
+  border: 1px solid var(--color-border);
+  border-radius: 2px;
+  cursor: help;
+}
+
+.canvas:focus-visible {
+  outline: 2px solid var(--color-accent);
+  outline-offset: 2px;
+}
+
+.tooltip {
+  position: absolute;
+  top: 100%;
+  left: 0;
+  z-index: 5;
+  max-width: min(20rem, 80vw);
+  padding: 0.35rem 0.5rem;
+  background: var(--color-bg-raised);
+  color: var(--color-text);
+  border: 1px solid var(--color-border-strong);
+  border-radius: 4px;
+  font-family: monospace;
+  font-size: 0.75rem;
+  overflow-wrap: anywhere;
+  white-space: pre-wrap;
+}
+
+.tooltip[hidden] {
+  display: none;
+}
+
+.copy {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.25rem;
+  padding: 0;
+  border: none;
+  background: none;
+  cursor: pointer;
+  font-size: 0.75rem;
+  color: var(--color-text-muted);
+}
+
+.copy:hover {
+  color: var(--color-text);
+}
+
+.text {
+  overflow-wrap: anywhere;
+}

@@ -9151,5 +9151,9 @@
   "analysis.coverage.imports_delete_title": "Delete import",
   "analysis.coverage.imports_delete_confirm": "Delete {{filename}} and its {{count}} rows? This cannot be undone.",
   "analysis.coverage.imports_delete_failed": "Delete failed.",
-  "analysis.coverage.imports_show_aria": "Show {{filename}} on the map"
+  "analysis.coverage.imports_show_aria": "Show {{filename}} on the map",
+  "mco_image.aria_label": "MCOimg image, {{width}} by {{height}} pixels",
+  "mco_image.copy": "Copy original message",
+  "mco_image.copied": "Copied",
+  "mco_image.copy_failed": "Copy failed"
 }
