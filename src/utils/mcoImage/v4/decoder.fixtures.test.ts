@@ -8,6 +8,17 @@ import {
   McoImageV4UnsupportedFormatError,
 } from './errors.js';
 
+const HOST_ERROR_PREFIX = 'Invalid v4 payload: ';
+
+/**
+ * Raster layers go through the Phase 1 v3 decoder, which ports the upstream JavaScript codec;
+ * the Dart codec words two of its messages differently. Same error, same class.
+ */
+const DART_V3_MESSAGES: Record<string, string> = {
+  'Compact sparse color index out of range': 'Sparse color index out of range',
+  'Compact sparse palette contains background': 'Sparse palette contains background',
+};
+
 interface Entry {
   name: string;
   bodyHex?: string;
@@ -42,8 +53,14 @@ function check(entry: Entry, run: () => ReturnType<typeof decodeV4Body>): void {
   }
   expect(caught).toBeInstanceOf(cls);
   expect(caught).toBeInstanceOf(McoImageV4CodecError);
+  // 'Invalid v4 payload: <host error>' wraps a Dart FormatException / TypeError text that
+  // JavaScript cannot reproduce; the class is checked, the wrapper prefix is checked.
+  const message = (caught as Error).message;
   if (entry.message !== undefined && entry.message !== null) {
-    expect((caught as Error).message).toBe(entry.message);
+    const hostText = /^(MCOtxt: Invalid MCOtxt (?:RAW_UTF8|UTF8_RUN) bytes: )/.exec(entry.message);
+    if (entry.message.startsWith(HOST_ERROR_PREFIX)) expect(message.startsWith(HOST_ERROR_PREFIX)).toBe(true);
+    else if (hostText) expect(message.startsWith(hostText[1])).toBe(true);
+    else expect(message).toBe(DART_V3_MESSAGES[entry.message] ?? entry.message);
   }
 }
 
