@@ -77,7 +77,19 @@ export class V4TestDoc {
     return this;
   }
 
-  /** TEXT command carrying a raw MCOtxt-free body is not needed; callers pass prepared bits. */
+  /** TEXT command (EXTENDED2 0) with no overrides and an MCOtxt stream given as MSB-first bytes. */
+  text(x: number, y: number, data: Uint8Array, bitLength: number): this {
+    this.w.writeBits(15, 4);
+    this.w.writeBits(15, 4);
+    this.w.writeBits(0, 4);
+    this.point(x, y);
+    this.w.writeBits(0, 3);
+    this.w.writeCompactUint(bitLength);
+    for (let i = 0; i < bitLength; i++) this.w.writeBits((data[i >> 3] >> (7 - (i & 7))) & 1, 1);
+    return this;
+  }
+
+  /** RASTER_LAYER command. */
   rasterLayer(x: number, y: number, high: number, payload: Uint8Array): this {
     this.w.writeBits(15, 4);
     this.w.writeBits(14, 4);

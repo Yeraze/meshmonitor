@@ -93,6 +93,21 @@ describe('decodeMcoImageText', () => {
       for (const entry of unsupported) expect(decodeMcoImageText(entry.text)).toBeNull();
     });
 
+    it('draws the reporter sample with its captions', () => {
+      const diff = (
+        JSON.parse(readFileSync(new URL('./__fixtures__/v4-differential-fixtures.json', import.meta.url), 'utf8')) as {
+          entries: Array<{ name: string; text: string }>;
+        }
+      ).entries;
+      const reporter = diff.find((e) => e.name === 'reporter-6586');
+      const img = decodeMcoImageText(reporter?.text ?? '');
+      expect(img?.format).toBe('im4');
+      if (img?.format !== 'im4') throw new Error('not im4');
+      expect([img.width, img.height]).toEqual([48, 33]);
+      expect(img.captions).toContain('Queens Weather');
+      expect(img.captions).toContain('RH 82% ↙ NE 15 30.43↓');
+    });
+
     it('caches im4 results too', () => {
       const text = okWithText?.text ?? '';
       expect(decodeMcoImageText(text)).toBe(decodeMcoImageText(text));
