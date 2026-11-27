@@ -67,7 +67,7 @@ A public instance hides message text from anonymous viewers before MeshMonitor d
 
 Every message box has a **+** button. Choose **Insert image** to open the image dialog.
 
-<!-- screenshot: /images/features/mco-images-compose.png (added by the maintainer) -->
+![The Insert image dialog showing IM3 and IM4 previews of a photo, each with its byte count and a Fits mark](/images/features/mco-images-compose.png)
 
 1. Pick a PNG or JPEG file, up to 25 MB.
 2. Choose **Auto** or **Manual**.
