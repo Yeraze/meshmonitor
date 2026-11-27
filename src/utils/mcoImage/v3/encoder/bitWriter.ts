@@ -53,8 +53,10 @@ export class BitWriter {
     let sourceShift = 0;
     while (remaining > 0) {
       const take = Math.min(8 - this.bitOffset, remaining);
-      const mask = 2 ** take - 1;
-      this.current |= ((Math.floor(value / (2 ** sourceShift)) & mask) << this.bitOffset);
+      const mask = (1 << take) - 1;
+      // Output-neutral: for 0 <= value < 2^32 and sourceShift < 32, `value >>> sourceShift` equals
+      // upstream's `Math.floor(value / 2 ** sourceShift)` once masked to at most 8 bits.
+      this.current |= (((value >>> sourceShift) & mask) << this.bitOffset);
       this.bitOffset += take;
       sourceShift += take;
       remaining -= take;

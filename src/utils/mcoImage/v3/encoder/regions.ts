@@ -48,7 +48,7 @@ import { McoImageV3BlockAlgorithm as MCOImageV3BlockAlgorithm } from '../constan
 import { BitWriter } from './bitWriter.js';
 import { writeAdaptiveBitplanesBody, writeLegacyBitplanesBody } from './bitplanes.js';
 import { biColorForeground, writeBlockBodyEncoder, writeQuadtreeNodeEncoder, writeRowRepeatEncoder } from './blockBody.js';
-import { buildRuns, imageModeForAlgorithm, isImplicitWhiteBackground, localIndexMap, makeCandidate, modeTieRank, sparseAnalysis, toScanOrder, writeBackgroundRef, writeColorRef, writeDeltaRegionGeometry, writeImagePreamble, writeRegionGeometry } from './common.js';
+import { valueListCacheKey, buildRuns, imageModeForAlgorithm, isImplicitWhiteBackground, localIndexMap, makeCandidate, modeTieRank, sparseAnalysis, toScanOrder, writeBackgroundRef, writeColorRef, writeDeltaRegionGeometry, writeImagePreamble, writeRegionGeometry } from './common.js';
 import { localPaletteVariants, writeLocalPalette } from './localPaletteWriter.js';
 import { buildGreedyLzTokens, buildOptimalLzTokens, lzTokensBitCost, writeLzTokens } from './lz.js';
 import { writeCompactRowDeltaBodyEncoder, writeRowDeltaBodyEncoder } from './rowDelta.js';
@@ -587,7 +587,7 @@ export function tryRegionBodyEncoder(image: V3Image, rowMajor: number[], bounds:
   if(canUseCompactBlockHeader(algorithm)&&scan!==ScanMode.h)return null;
   const cacheKey = caches.regionBody == null ? null : [
     image.paletteProfile, bounds.width, bounds.height, algorithm, scan, backgroundColor,
-    high ? 1 : 0, sharedPalette ? sharedPalette.join('.') : '-', rowMajor.join('.'),
+    high ? 1 : 0, sharedPalette ? valueListCacheKey(sharedPalette) : '-', valueListCacheKey(rowMajor),
   ].join('|');
   if (cacheKey != null && caches.regionBody!.has(cacheKey)) return caches.regionBody!.get(cacheKey) as RegionBodyResult | null;
   const linear=toScanOrder(rowMajor,bounds.width,bounds.height,scan);

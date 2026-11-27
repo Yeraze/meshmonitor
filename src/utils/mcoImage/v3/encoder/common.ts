@@ -251,9 +251,42 @@ export const caches: EncoderCaches = {
   regionLayoutCost: null,
 };
 
-export function valueListCacheKey(values: number[]) {
-  return values.join('.');
+/**
+ * Memo key for a list of numbers. Upstream: `values.join('.')` (2352-2355).
+ * Output-neutral speed change (#6586): that string built from whole pixel arrays was the
+ * largest cost of a High encode. Here every value in 0..65535 becomes one UTF-16 unit, so the
+ * key is equal exactly when the lists are equal (a length prefix keeps composite keys such as
+ * `${a}|${b}` unambiguous); any other value falls back to the upstream `join`.
+ */
+export function valueListCacheKey(values: ArrayLike<number>): string {
+  // The encoder never mutates a list after it has been keyed (lists are built, then only read),
+  // so one key per list object is enough.
+  const memo = keyMemo.get(values);
+  if (memo !== undefined) return memo;
+  const key = buildValueListKey(values);
+  keyMemo.set(values, key);
+  return key;
 }
+
+const keyMemo = new WeakMap<object, string>();
+
+function buildValueListKey(values: ArrayLike<number>): string {
+  const length = values.length;
+  let key = `${length}:`;
+  for (let start = 0; start < length; start += CACHE_KEY_CHUNK) {
+    const end = Math.min(length, start + CACHE_KEY_CHUNK);
+    const units = new Array<number>(end - start);
+    for (let i = start; i < end; i++) {
+      const value = values[i];
+      if (!(value >= 0 && value <= 0xffff && (value | 0) === value)) return `j:${Array.prototype.join.call(values, '.')}`;
+      units[i - start] = value;
+    }
+    key += String.fromCharCode.apply(null, units);
+  }
+  return key;
+}
+
+const CACHE_KEY_CHUNK = 4096;
 
 export function localIndexMap(palette: number[]) {
   const key = caches.localIndexMap == null ? null : valueListCacheKey(palette);

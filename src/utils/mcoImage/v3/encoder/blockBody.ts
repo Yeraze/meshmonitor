@@ -290,8 +290,13 @@ export function tryBuildSolidBackgroundCandidate(image: V3Image) {
   writeImagePreamble(writer, image, ScanMode.h, implicit, MCOImageV3Container.solidBackground, ref & CONTAINER_CONTEXT_MASK);
   if (image.transparentColor != null) writeColorRef(writer, image.paletteProfile, image.transparentColor);
   if (!implicit) {
+    // Upstream (3919-3939) writes `if (tail > 0) writeBits(tail, ...)`. The decoder always reads
+    // globalBits - 5 tail bits (readContextualColorRef), so a non-white colour with ref < 32 in a
+    // profile wider than 5 bits decoded only when padding bits happened to follow (fails e.g. for
+    // a 1x1 image). Writing the zero tail is byte-identical whenever upstream's output decodes.
     const tail = ref >> 5;
-    if (tail > 0) writer.writeBits(tail, Math.max(0, globalBits(image.paletteProfile) - 5));
+    const tailBits = Math.max(0, globalBits(image.paletteProfile) - 5);
+    if (tailBits > 0) writer.writeBits(tail, tailBits);
   }
   return makeCandidate(writer.toBytes(), {
     mode: ImageMode.rawGlobal, scan: ScanMode.h, backgroundColor: color,
