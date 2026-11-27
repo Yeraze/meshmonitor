@@ -45,7 +45,7 @@ Copy action); hooked into `renderMessageWithLinks` (Meshtastic channel/DM/histor
 `MeshCoreMessageStream`, next to SPIP. Exit: upstream v3 decoder fixtures + reporter IM3 sample
 decode; false-positive tests; render tests per surface; docs page; browser-validated.
 
-### Phase 2 — IM4 + MCOtxt receive  [ ]
+### Phase 2 — IM4 + MCOtxt receive  [x]
 TS port of the IM4 decoder (all figures, repeats, groups, raster layers through Phase 1's IM3
 decoder, transport tail), MCOtxt v1 decoder with frozen tables, canvas vector renderer per the
 normative view, captions. Exit: reporter IM4 sample renders with its caption; failure-class
@@ -73,4 +73,22 @@ Exit: round-trip and fit tests; composer tests; docs; browser-validated send on 
   `src/utils/imageMessage.ts`. `extractUrls` skips MCO payloads (Base91 can contain `http://`).
 - Not rendered as images (stay text, like SPIP): reply quotes, search results, MeshCore ingest view,
   packet/route modals, resend quote, notification bodies. Bridged `MT@Bob: im3:…` stays text.
+
+### Phase 2
+- IM4 decoder (`src/utils/mcoImage/v4/`) is a faithful TS port of the Dart reference (tag
+  9.5.1-mod-1.9.0); MCOtxt (`mcotxt/`) takes decode logic and error codes from Dart and the frozen
+  gen-0 tables verbatim from `mcotxt.js` (wire-hash test).
+- Rendering: the codec yields a document model; `v4/paint.ts` draws it on a canvas at CSS size x
+  devicePixelRatio (clamped 1..3); text uses the page font in device pixels, so it can differ
+  slightly from the reference app (Inter). No repaint on dpr change.
+- IM4 with at least one caption targets 256 px on the longest side (user decision); others 192 px.
+  Integer upscale still applies, so the 48x33 issue sample shows at 240 px.
+- Caps, charged before any copy is built: 4096 figures, group depth 16, 16384 path points,
+  16 raster layers / 262144 raster pixels, 4096 text code points. Damaged, unsupported and
+  over-cap images all show the original text.
+- Fixtures harvested from the upstream test suite run in `dart:stable` Docker (pinned digest),
+  plus seeded reference-encoder documents and mutants; generators stay outside the repo.
+- The issue's IM4 sample (230 B) exceeds both send limits, so browser validation sent a 119 B
+  captioned fixture end-to-end on Meshtastic and MeshCore `gauntlet`, and painted the issue sample
+  in-page with the deployed chunk.
 

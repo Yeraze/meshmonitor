@@ -1,10 +1,12 @@
 # MCOimg Images
 
-MeshMonitor draws MCOimg v3 (`im3:`) messages as images. They show in Meshtastic and MeshCore channels, direct messages, rooms, and Unified Messages.
+MeshMonitor draws MCOimg v3 (`im3:`) and v4 (`im4:`) messages as images. A v3 image is a grid of pixels. A v4 image is a drawing with shapes and text, so it stays sharp at any zoom. They show in Meshtastic and MeshCore channels, direct messages, rooms, and Unified Messages.
 
 MCOimg packs a small image into one text message, so it costs no more airtime than any other message. You make one with the online encoder at <https://hdden.ru/MCOimg/>, then paste the code into the message box. Sending from MeshMonitor comes in a later release.
 
-![An MCOimg image in a channel, with the payload shown on hover and a Copy original message button](/images/features/mco-images.png)
+![An MCOimg v3 image in a channel, with the payload shown on hover and a Copy original message button](/images/features/mco-images.png)
+
+![An MCOimg v4 weather card from the issue sample, with its captions drawn as text](/images/features/mco-images-im4.png)
 
 ---
 
@@ -12,15 +14,32 @@ MCOimg packs a small image into one text message, so it costs no more airtime th
 
 So that ordinary chat stays as text, a message is drawn as an image only when:
 
-- the whole trimmed message is one `im3:` payload, with nothing before or after it;
-- `im3:` is lowercase;
+- the whole trimmed message is one `im3:` or `im4:` payload, with nothing before or after it;
+- the prefix is lowercase;
 - it has at most 512 characters;
 - the image is at most 256 by 256 pixels;
-- the data is valid for the IM3 format.
+- the data is valid for its format;
+- for IM4, the drawing stays inside the caps below.
 
-Anything else shows as plain text. That covers `IM3:`, text mixed with a code, bad or cut-off data, and IM4 messages (`im4:`), which stay text for now.
+Anything else shows as plain text. That covers `IM3:` and `IM4:`, text mixed with a code, and bad or cut-off data. It also covers IM4 images that use a feature MeshMonitor does not support yet, or that are too complex to draw safely.
 
-MeshMonitor shows each image at up to 192 pixels on its longest side, so a small image does not fill the screen. While the decoder loads, and if a message fails to decode, you see the original text.
+IM4 caps:
+
+- 4096 figures
+- nesting depth of 16
+- 16384 path points
+- 16 raster layers and 262144 raster pixels in all
+- 4096 text code points
+
+An IM4 image over any cap shows as the original text.
+
+MeshMonitor shows each image at up to 192 pixels on its longest side, so a small image does not fill the screen. An IM4 image with a caption shows at up to 256 pixels. While the decoder loads, and if a message fails to decode, you see the original text.
+
+---
+
+## Text in IM4 images
+
+An IM4 image sends its text as characters, not pixels. MeshMonitor draws the text with the page font, so it can look a little different from the MeshCore Open app, and line breaks can differ. Screen readers read the text out.
 
 ---
 
@@ -46,9 +65,11 @@ A public instance hides message text from anonymous viewers before MeshMonitor d
 
 ## Credits
 
-The MCOimg format and its reference codec come from HDDen's `meshcore-open` fork:
+The MCOimg formats and their reference codecs come from HDDen's `meshcore-open` fork:
 
 - [MCOimg v3 reference](https://github.com/HDDen/meshcore-open/blob/rename-mco-advanced/docs/mcoimg_v3_reference.md)
 - [JavaScript codec](https://github.com/HDDen/meshcore-open/blob/rename-mco-advanced/docs/mcoimg-js/mcoimg-v3-codec.global.js)
+- [MCOimg v4 reference](https://github.com/HDDen/meshcore-open/blob/9.5.1-mod-1.9.0/docs/mcoimg_v4_reference.md) and [v4 codec](https://github.com/HDDen/meshcore-open/blob/9.5.1-mod-1.9.0/lib/helpers/mcoimg_v4_codec.dart) (tag `9.5.1-mod-1.9.0`)
+- [MCOtxt v1 protocol](https://github.com/HDDen/meshcore-open/blob/9.5.1-mod-1.9.0/docs/MCOTXT_V1_PROTOCOL.md) and [`mcotxt.js` codec](https://github.com/HDDen/meshcore-open/blob/c38c1650fe8394835e333b5b4a1ac84ead2d5e5a/docs/mcotxt/assets/mcotxt.js)
 
-The code is MIT licensed, copyright (c) 2025 zjs81. MeshMonitor ports the decoder to TypeScript. See `THIRD_PARTY_DATA.md` for details.
+The code is MIT licensed, copyright (c) 2025 zjs81. MeshMonitor ports the IM3 and IM4 decoders and the MCOtxt decoder to TypeScript. See `THIRD_PARTY_DATA.md` for details.

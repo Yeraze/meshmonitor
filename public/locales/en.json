@@ -9153,6 +9153,7 @@
   "analysis.coverage.imports_delete_failed": "Delete failed.",
   "analysis.coverage.imports_show_aria": "Show {{filename}} on the map",
   "mco_image.aria_label": "MCOimg image, {{width}} by {{height}} pixels",
+  "mco_image.aria_label_text": "MCOimg image, {{width}} by {{height}}, text: {{text}}",
   "mco_image.copy": "Copy original message",
   "mco_image.copied": "Copied",
   "mco_image.copy_failed": "Copy failed"

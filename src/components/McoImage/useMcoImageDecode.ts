@@ -1,17 +1,18 @@
 import { useEffect, useState } from 'react';
 import type { DecodedMcoImage } from '../../utils/mcoImage/types.js';
 import { getLoadedMcoCodec, loadMcoCodec } from './loadMcoCodec.js';
+import type { McoCodec } from './loadMcoCodec.js';
 
 export type McoDecodeState =
   | { status: 'loading' }
-  | { status: 'ready'; image: DecodedMcoImage }
+  | { status: 'ready'; image: DecodedMcoImage; codec: McoCodec }
   | { status: 'failed' };
 
 function decodeSync(payload: string): McoDecodeState | null {
   const codec = getLoadedMcoCodec();
   if (!codec) return null;
   const image = codec.decodeMcoImageText(payload);
-  return image ? { status: 'ready', image } : { status: 'failed' };
+  return image ? { status: 'ready', image, codec } : { status: 'failed' };
 }
 
 export function useMcoImageDecode(payload: string): McoDecodeState {
@@ -32,7 +33,10 @@ export function useMcoImageDecode(payload: string): McoDecodeState {
       (codec) => {
         if (cancelled) return;
         const image = codec.decodeMcoImageText(payload);
-        setState({ payload, value: image ? { status: 'ready', image } : { status: 'failed' } });
+        setState({
+          payload,
+          value: image ? { status: 'ready', image, codec } : { status: 'failed' },
+        });
       },
       () => {
         if (!cancelled) setState({ payload, value: { status: 'failed' } });
