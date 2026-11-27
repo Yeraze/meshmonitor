@@ -31,11 +31,14 @@ vi.mock('../../hooks/useViewTranslations', () => ({
 import { MeshCoreMessageStream } from './MeshCoreMessageStream';
 import type { MeshCoreMessage } from './hooks/useMeshCore';
 import { PUBLIC_INSTANCE_HIDDEN_TEXT } from '../../utils/publicInstanceMode';
+import fixtures from '../../utils/mcoImage/__fixtures__/v4-differential-fixtures.json';
 
 const SELF = 'a'.repeat(64);
 const OTHER = 'b'.repeat(64);
 const T0 = Date.UTC(2026, 9, 9, 12, 0, 0);
 const SAMPLE = 'im3:2nTxb8bL@u#f!+~Xv(}LpQrfRJ+tBMPKr*JTvu0t6EbJbeD"%qhto7o)L(:>=5Mf%u}"[7EE%MACq%H"EA';
+
+const IM4 = fixtures.entries.find((e) => e.name === 'reporter-6586')!.text;
 
 const msg = (id: string, text: string, over: Partial<MeshCoreMessage> = {}): MeshCoreMessage => ({
   id, fromPublicKey: OTHER, toPublicKey: 'channel-1', text, timestamp: T0, fromName: 'Alice', ...over,
@@ -72,5 +75,14 @@ describe('MeshCoreMessageStream MCOimg (#6586)', () => {
     ]);
     expect(idsSeen.last).toEqual(['plain']);
     expect(container.querySelectorAll('.translate-button')).toHaveLength(1);
+  });
+
+  it('draws an im4 message as an image and hides Translate', async () => {
+    const { container } = renderStream([msg('im4', IM4)]);
+    const img = await screen.findByTestId('mco-image');
+    expect(img.getAttribute('data-format')).toBe('im4');
+    expect(img.querySelector('[role="img"]')!.getAttribute('aria-label')).toContain('Queens Weather');
+    expect(idsSeen.last).toEqual([]);
+    expect(container.querySelectorAll('.translate-button')).toHaveLength(0);
   });
 });
