@@ -34,6 +34,20 @@ describe('useMcoImageDecode', () => {
     expect(result.current.status).toBe('ready');
   });
 
+  it('carries the codec in the ready state', async () => {
+    const c = codec();
+    loaderState.loaded = c;
+    const { result } = renderHook(() => useMcoImageDecode('abc'));
+    expect(result.current.status === 'ready' && result.current.codec).toBe(c);
+    loaderState.loaded = null;
+    const loadedCodec = codec();
+    loaderState.load = () => Promise.resolve(loadedCodec);
+    const second = renderHook(() => useMcoImageDecode('abcd'));
+    await waitFor(() =>
+      expect(second.result.current.status === 'ready' && second.result.current.codec).toBe(loadedCodec),
+    );
+  });
+
   it('is failed synchronously when decode returns null', () => {
     loaderState.loaded = codec();
     const { result } = renderHook(() => useMcoImageDecode('bad'));

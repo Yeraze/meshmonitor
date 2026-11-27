@@ -10,6 +10,13 @@ vi.mock('react-i18next', async () => {
 
 import { renderMessageWithLinks, extractUrls } from './linkRenderer';
 import { PUBLIC_INSTANCE_HIDDEN_TEXT } from './publicInstanceMode';
+import fixtures from './mcoImage/__fixtures__/v4-differential-fixtures.json';
+
+type Fx = { name: string; text: string; result: string };
+const entries = fixtures.entries as Fx[];
+const IM4 = entries.find((e) => e.name === 'reporter-6586')!.text;
+const IM4_DAMAGED = entries.find((e) => e.name === 'mutant-invalid')!.text;
+const IM4_UNSUPPORTED = entries.find((e) => e.name === 'mutant-unsupported')!.text;
 
 const SAMPLE = 'im3:2nTxb8bL@u#f!+~Xv(}LpQrfRJ+tBMPKr*JTvu0t6EbJbeD"%qhto7o)L(:>=5Mf%u}"[7EE%MACq%H"EA';
 
@@ -35,6 +42,31 @@ describe('renderMessageWithLinks MCOimg (#6586)', () => {
     expect(screen.getByTestId('public-hidden-text')).toBeTruthy();
     expect(screen.queryByTestId('mco-image')).toBeNull();
     expect(screen.queryByTestId('mco-image-text')).toBeNull();
+  });
+
+  it('draws the reporter IM4 sample with its caption in the label', async () => {
+    render(<div>{renderMessageWithLinks(IM4)}</div>);
+    const img = await screen.findByTestId('mco-image');
+    expect(img.getAttribute('data-format')).toBe('im4');
+    expect(img.querySelector('[role="img"]')!.getAttribute('aria-label')).toContain('Queens Weather');
+  });
+
+  it.each([
+    ['damaged', IM4_DAMAGED],
+    ['unsupported', IM4_UNSUPPORTED],
+  ])('shows a %s IM4 payload as the exact text', async (_n, text) => {
+    render(<div>{renderMessageWithLinks(text)}</div>);
+    const el = await screen.findByTestId('mco-image-text');
+    expect(el.textContent).toBe(text);
+    expect(screen.queryByTestId('mco-image')).toBeNull();
+  });
+
+  it('leaves "hi im4:..." as plain text', () => {
+    const text = `hi ${IM4}`;
+    const { container } = render(<div>{renderMessageWithLinks(text)}</div>);
+    expect(screen.queryByTestId('mco-image')).toBeNull();
+    expect(screen.queryByTestId('mco-image-text')).toBeNull();
+    expect(container.textContent).toContain(text);
   });
 
   it('still draws SPIP', () => {
