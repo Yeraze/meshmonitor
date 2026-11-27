@@ -51,7 +51,7 @@ decoder, transport tail), MCOtxt v1 decoder with frozen tables, canvas vector re
 normative view, captions. Exit: reporter IM4 sample renders with its caption; failure-class
 tests; render tests; docs updated; browser-validated.
 
-### Phase 3 — Compose and send  [ ]
+### Phase 3 — Compose and send  [x]
 IM3 High encoder + IM4 raster-layer encoder (Web Worker), resize/quantize pipeline, auto-fit
 search, manual override, side-by-side preview decoded from each payload, byte count + fit status
 for Meshtastic and MeshCore channel/DM limits, insert-and-send through existing composers.
@@ -92,3 +92,21 @@ Exit: round-trip and fit tests; composer tests; docs; browser-validated send on 
   captioned fixture end-to-end on Meshtastic and MeshCore `gauntlet`, and painted the issue sample
   in-page with the deployed chunk.
 
+### Phase 3
+- Encoder level (user decision H.1, supersedes "High in a Web Worker"): auto-fit searches with
+  Normal, then High refines the winner in the background for up to 20 s; the shorter text wins.
+  **Use** works at once on the Normal result. Reason: High takes 3-23 s per encode at 16-32 px on a
+  desktop (phones 3-5x slower) and saves about 2 %, so a High-only search would take minutes.
+- Fit ranking: width x height x log2(colours); ties go to the larger image.
+- Dithering: off by default, manual-mode switch only; auto-fit never dithers (it adds 30-160 % bytes).
+- Draft: inserting an image replaces the draft, with a note in the dialog. A MeshCore reply loses its
+  reply link.
+- Encoder: faithful TS port of the v3 Normal/High encoder (`v3/encoder/`), byte-exact against
+  upstream fixtures. IM4 = one raster layer around the v3 body (`v4/rasterEncoder.ts`), checked
+  against Dart reference documents.
+- JS vs Dart v3 encoders agree on 21 of 22 cross-check images (never compared upstream). The IM4
+  wrapper tests use Dart's own inner body, so they do not depend on that agreement.
+- Upstream fix: solid-background candidates write their tail bits whenever the profile has them.
+  Upstream skips a zero tail, and its output for master64/dynamic64+ 1x1 solid images does not decode.
+  Output is the same wherever upstream decodes.
+- Screenshot `/images/features/mco-images-compose.png` is added by the orchestrator.
