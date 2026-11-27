@@ -61,8 +61,8 @@ describe('MeshCoreMessageStream insert image', () => {
     expect(Number(await insertImage())).toBe(expected);
   });
 
-  it('Alice channel limit is 151', () => {
-    expect(meshcoreChannelMaxBytes('Alice')).toBe(151);
+  it('Alice channel limit is 153 (160 - 5 name bytes - 2)', () => {
+    expect(meshcoreChannelMaxBytes('Alice')).toBe(153);
   });
 
   it('sends exactly the inserted payload', async () => {

@@ -144,9 +144,11 @@ describe('composer + menu (#6370)', () => {
     { publicKey: 'abc', advName: 'Truncated', advType: 1 }, // bad key: not shareable
   ];
 
-  it('has no + button unless the parent enables contact sharing', () => {
+  it('offers no contact-sharing entries unless the parent enables contact sharing', () => {
     render(<MeshCoreMessageStream messages={[]} onSend={async () => true} />);
-    expect(screen.queryByRole('button', { name: 'Insert' })).toBeNull();
+    // The + menu exists for Insert image (#6586) but holds nothing else.
+    fireEvent.click(screen.getByRole('button', { name: 'Insert' }));
+    expect(screen.getAllByRole('menuitem').map((e) => e.textContent)).toEqual(['Insert image']);
   });
 
   it('Share my contact info inserts the self token at the caret', () => {
