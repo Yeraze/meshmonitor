@@ -27,7 +27,8 @@
   position: absolute;
   top: 100%;
   left: 0;
-  z-index: 5;
+  z-index: 20; /* above .message-actions (z-index 10, messages.css) */
+  width: max-content;
   max-width: min(20rem, 80vw);
   padding: 0.35rem 0.5rem;
   background: var(--color-bg-raised);
@@ -53,11 +54,13 @@
   background: none;
   cursor: pointer;
   font-size: 0.75rem;
-  color: var(--color-text-muted);
+  color: inherit;
+  opacity: 0.75;
+  text-decoration: underline;
 }
 
 .copy:hover {
-  color: var(--color-text);
+  opacity: 1;
 }
 
 .text {
