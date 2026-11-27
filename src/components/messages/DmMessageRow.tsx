@@ -14,6 +14,7 @@ import type { TimeFormat, DateFormat } from '../../contexts/SettingsContext';
 import type { MeshProtocol } from '../../utils/meshProtocol';
 import type { MentionRenderOptions } from '../../utils/linkRenderer';
 import { renderMessageWithLinks } from '../../utils/linkRenderer';
+import { isImageMessageText } from '../../utils/imageMessage';
 import { formatMessageTime, formatRelativeTime } from '../../utils/datetime';
 import HopCountDisplay from '../HopCountDisplay';
 import LinkPreview from '../LinkPreview';
@@ -212,7 +213,7 @@ function DmMessageRowImpl({
               >
                 <UiIcon name="reaction" size={15} />
               </button>
-              {canTranslate && msg.text && (
+              {canTranslate && msg.text && !isImageMessageText(msg.text) && (
                 <button
                   className="translate-button"
                   onClick={() => actions.translate(msg.id, msg.text)}

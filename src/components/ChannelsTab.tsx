@@ -17,6 +17,7 @@ import { MuteMenu, MutedName } from './notifications/MuteMenu';
 import { MarkAllReadButton } from './messages/MarkAllReadButton';
 import { TimeFormat, DateFormat, useSettings, useNotificationMuteSettings } from '../contexts/SettingsContext';
 import { formatPrecisionAccuracy } from '../utils/distance';
+import { isImageMessageText } from '../utils/imageMessage';
 import apiService, { type ChannelDatabaseEntry } from '../services/api';
 import { getMessageDateSeparator, shouldShowDateSeparator } from '../utils/datetime';
 import { getMessageSortTime } from '../utils/messageSort';
@@ -352,7 +353,7 @@ export default function ChannelsTab({
   const storedTranslationIds = useMemo(
     () =>
       [...(channelMessages[selectedChannel] || [])]
-        .filter((m) => !!m.text)
+        .filter((m) => !!m.text && !isImageMessageText(m.text))
         .sort((a, b) => getMessageSortTime(a) - getMessageSortTime(b))
         .map((m) => m.id),
     [channelMessages, selectedChannel]

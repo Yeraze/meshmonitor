@@ -18,15 +18,20 @@ vi.mock('../contexts/SettingsContext', () => ({
 
 // extractUrls always finds a URL; fetchLinkPreview is a spy we assert against.
 const fetchLinkPreviewMock = vi.fn(async () => ({ url: 'https://example.com', title: 'Example' }));
-vi.mock('../utils/linkRenderer', () => ({
-  extractUrls: () => ['https://example.com'],
-  fetchLinkPreview: (...args: unknown[]) => fetchLinkPreviewMock(...args),
-}));
+const { realExtract } = vi.hoisted(() => ({ realExtract: { on: false } }));
+vi.mock('../utils/linkRenderer', async () => {
+  const actual = await vi.importActual<typeof import('../utils/linkRenderer')>('../utils/linkRenderer');
+  return {
+    extractUrls: (text: string) => (realExtract.on ? actual.extractUrls(text) : ['https://example.com']),
+    fetchLinkPreview: (...args: unknown[]) => fetchLinkPreviewMock(...args),
+  };
+});
 
 describe('LinkPreview link-preview gate', () => {
   beforeEach(() => {
     fetchLinkPreviewMock.mockClear();
     settingState.linkPreviewsEnabled = true;
+    realExtract.on = false;
     // Minimal IntersectionObserver stub for jsdom (component uses lazy loading).
     (globalThis as any).IntersectionObserver = class {
       observe() {}
@@ -47,5 +52,19 @@ describe('LinkPreview link-preview gate', () => {
     const { container } = render(<LinkPreview text="check https://example.com" />);
     // The lazy-loading container is present (fetch only fires on intersection).
     expect(container.querySelector('.link-preview-container')).toBeInTheDocument();
+  });
+
+  it('sets up no observer and no fetch for an MCOimg payload containing a URL (#6586)', () => {
+    realExtract.on = true;
+    const observe = vi.fn();
+    (globalThis as any).IntersectionObserver = class {
+      observe = observe;
+      unobserve() {}
+      disconnect() {}
+    };
+    const { container } = render(<LinkPreview text="im3:abcdhttp://x.yEFGH" />);
+    expect(container).toBeEmptyDOMElement();
+    expect(observe).not.toHaveBeenCalled();
+    expect(fetchLinkPreviewMock).not.toHaveBeenCalled();
   });
 });
