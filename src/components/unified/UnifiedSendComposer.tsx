@@ -480,6 +480,7 @@ export default function UnifiedSendComposer({ channelName, draftStore, onSent, t
           onSend={handleSend}
           sendAriaLabel={t('unified.send.send_aria', 'Send message')}
           maxBytes={maxBytes}
+          imageByteLimit={maxBytes}
           blockSendOverLimit
           allowNewlines={kind !== 'meshcore'}
           sending={mutation.isPending}

@@ -51,6 +51,7 @@ import {
 } from './messages/messageRowSupport';
 import type { TranslatedMessageState } from './translation/TranslatedMessage';
 import { getUserDisplayName } from '../utils/nodeHelpers';
+import { MESHTASTIC_MAX_TEXT_BYTES } from '../utils/messageSplitLimits';
 import { PortNum } from '../server/constants/meshtastic.js';
 
 /** The latest handlers behind the stable row callbacks (see `rowActions`). */
@@ -1249,6 +1250,7 @@ export default function ChannelsTab({
                         <div className="message-input-container">
                           <MessageComposeInput
                             listId="channel-mention-list"
+                            imageByteLimit={MESHTASTIC_MAX_TEXT_BYTES}
                             textareaRef={channelMessageInputRef}
                             mentionCandidates={mentionCandidates}
                             homoglyphEnabled={homoglyphEnabled}
