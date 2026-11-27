@@ -39,7 +39,7 @@ IM3 and IM4 encodings side by side, and send one as ordinary text.
 
 ## Phases
 
-### Phase 1 — IM3 receive  [ ]
+### Phase 1 — IM3 receive  [x]
 TS port of the IM3 decoder + Base91; `McoImage` component (canvas, pixelated, payload tooltip,
 Copy action); hooked into `renderMessageWithLinks` (Meshtastic channel/DM/history/Unified) and
 `MeshCoreMessageStream`, next to SPIP. Exit: upstream v3 decoder fixtures + reporter IM3 sample
@@ -59,4 +59,18 @@ Exit: round-trip and fit tests; composer tests; docs; browser-validated send on 
 
 ## Deviations log
 
-_(record per phase)_
+### Phase 1
+- Codec is a faithful TS port of the upstream decoder (not vendored): `src/utils/mcoImage/` —
+  `detect.ts` (sync, main chunk), `decode.ts` (lazy chunk via `src/components/McoImage/loadMcoCodec.ts`),
+  `v3/*`. `decodeV3BodyWithoutNonce` is the Phase 2 raster-layer entry. Encoder deliberately absent.
+- Lazy load through a hook (`useMcoImageDecode`), not React.lazy: the payload text shows while
+  loading and on any failure, so no Suspense boundary is needed at call sites.
+- Test vectors: 39 + 6 upstream fixtures, plus 83 differential fixtures generated with the upstream
+  encoder (incl. internal entry points) so every container, hybrid marker 31, delta geometry and
+  shared-palette path is exercised. Generators live outside the repo; commands in the JSON.
+- Copy copies the trimmed payload. Display: longest side 192 px (integer upscale when smaller).
+- Translate is hidden for image messages (MCO **and SPIP**) on Meshtastic and MeshCore rows via
+  `src/utils/imageMessage.ts`. `extractUrls` skips MCO payloads (Base91 can contain `http://`).
+- Not rendered as images (stay text, like SPIP): reply quotes, search results, MeshCore ingest view,
+  packet/route modals, resend quote, notification bodies. Bridged `MT@Bob: im3:…` stays text.
+

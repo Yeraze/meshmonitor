@@ -4,6 +4,8 @@ MeshMonitor draws MCOimg v3 (`im3:`) messages as images. They show in Meshtastic
 
 MCOimg packs a small image into one text message, so it costs no more airtime than any other message. You make one with the online encoder at <https://hdden.ru/MCOimg/>, then paste the code into the message box. Sending from MeshMonitor comes in a later release.
 
+![An MCOimg image in a channel, with the payload shown on hover and a Copy original message button](/images/features/mco-images.png)
+
 ---
 
 ## When a message is drawn as an image
@@ -50,5 +52,3 @@ The MCOimg format and its reference codec come from HDDen's `meshcore-open` fork
 - [JavaScript codec](https://github.com/HDDen/meshcore-open/blob/rename-mco-advanced/docs/mcoimg-js/mcoimg-v3-codec.global.js)
 
 The code is MIT licensed, copyright (c) 2025 zjs81. MeshMonitor ports the decoder to TypeScript. See `THIRD_PARTY_DATA.md` for details.
-
-<!-- TODO: add the screenshot ![...](/images/features/mco-images.png) once it exists. -->
