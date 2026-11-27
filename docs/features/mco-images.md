@@ -6,7 +6,7 @@ MCOimg packs a small image into one text message, so it costs no more airtime th
 
 ![An MCOimg v3 image in a channel, with the payload shown on hover and a Copy original message button](/images/features/mco-images.png)
 
-<!-- IM4 screenshot placeholder: ![An MCOimg v4 image with a caption](/images/features/mco-images-im4.png) -->
+![An MCOimg v4 weather card from the issue sample, with its captions drawn as text](/images/features/mco-images-im4.png)
 
 ---
 
