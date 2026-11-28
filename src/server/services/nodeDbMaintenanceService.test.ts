@@ -71,6 +71,13 @@ describe('mapDbNodeToDeviceInfo', () => {
     expect(mapDbNodeToDeviceInfo({ ...base, hideFromMap: null }).hideFromMap).toBeUndefined();
   });
 
+  it('carries notes through so other browsers see a saved note (#3921)', () => {
+    const base = { nodeNum: 0x3f60a525, nodeId: '!3f60a525', longName: 'Rigel', shortName: 'Rig' };
+    expect(mapDbNodeToDeviceInfo({ ...base, notes: 'rooftop, solar' }).notes).toBe('rooftop, solar');
+    expect(mapDbNodeToDeviceInfo({ ...base, notes: '' }).notes).toBe('');
+    expect(mapDbNodeToDeviceInfo({ ...base, notes: null }).notes).toBeUndefined();
+  });
+
   it('omits importedAt for a node that was heard rather than imported', () => {
     const result = mapDbNodeToDeviceInfo({
       nodeNum: 0x3f60a525,

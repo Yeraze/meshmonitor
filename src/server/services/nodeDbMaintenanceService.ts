@@ -172,6 +172,15 @@ export function mapDbNodeToDeviceInfo(
     deviceInfo.hideFromMap = Boolean(node.hideFromMap);
   }
 
+  // #3921: free-text per-node notes. The twin in utils/dbNodeMapper.ts already
+  // carries this, but this copy (which serves /api/poll and /api/nodes for
+  // Meshtastic sources) did not. The note saved fine, yet no other browser or
+  // reload ever received it: they showed an empty box, and the next Save from
+  // there overwrote the stored note with whatever was typed into it.
+  if (node.notes !== null && node.notes !== undefined) {
+    deviceInfo.notes = node.notes;
+  }
+
   // Add isIgnored if it exists
   if (node.isIgnored !== null && node.isIgnored !== undefined) {
     deviceInfo.isIgnored = Boolean(node.isIgnored);

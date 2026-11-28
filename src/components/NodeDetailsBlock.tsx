@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { useTranslation } from 'react-i18next';
 import { DeviceInfo } from '../types/device';
 import { formatLocationSource, getHardwareModelName, parseNodeId } from '../utils/nodeHelpers';
@@ -107,9 +107,26 @@ const NodeDetailsBlock: React.FC<NodeDetailsBlockProps> = ({ node, timeFormat = 
     localStorage.setItem('nodeDetailsCollapsed', isCollapsed.toString());
   }, [isCollapsed]);
 
-  // Re-sync draft/baseline whenever the selected node or its stored note changes.
+  // Whether the textarea holds an unsaved edit. Kept in a ref so the re-sync
+  // effect below can read it without re-running on every keystroke. Declared
+  // first so it reflects the pre-sync state when both effects run together.
+  const notesDirtyRef = useRef(false);
   useEffect(() => {
-    setNotesDraft(storedNotes);
+    notesDirtyRef.current = notesDraft !== notesBaseline;
+  }, [notesDraft, notesBaseline]);
+  const notesNodeRef = useRef(nodeNum);
+
+  // Re-sync draft/baseline whenever the selected node or its stored note changes.
+  // A different node always resets the draft. For the same node, a new stored
+  // value (saved from another browser, arriving on the next poll) moves the
+  // baseline but leaves an unsaved edit in the textarea alone, so typing is
+  // never wiped out from under the user.
+  useEffect(() => {
+    const sameNode = notesNodeRef.current === nodeNum;
+    notesNodeRef.current = nodeNum;
+    if (!(sameNode && notesDirtyRef.current)) {
+      setNotesDraft(storedNotes);
+    }
     setNotesBaseline(storedNotes);
     setNotesError(null);
   }, [nodeNum, storedNotes]);
