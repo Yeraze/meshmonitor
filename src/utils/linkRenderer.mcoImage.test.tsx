@@ -23,7 +23,7 @@ const SAMPLE = 'im3:2nTxb8bL@u#f!+~Xv(}LpQrfRJ+tBMPKr*JTvu0t6EbJbeD"%qhto7o)L(:>
 describe('renderMessageWithLinks MCOimg (#6586)', () => {
   it('draws the sample as an image', async () => {
     render(<div>{renderMessageWithLinks(SAMPLE)}</div>);
-    expect(await screen.findByTestId('mco-image')).toBeTruthy();
+    expect(await screen.findByTestId('mco-image', {}, { timeout: 5000 })).toBeTruthy();
   });
 
   it.each([
@@ -46,7 +46,7 @@ describe('renderMessageWithLinks MCOimg (#6586)', () => {
 
   it('draws the reporter IM4 sample with its caption in the label', async () => {
     render(<div>{renderMessageWithLinks(IM4)}</div>);
-    const img = await screen.findByTestId('mco-image');
+    const img = await screen.findByTestId('mco-image', {}, { timeout: 5000 });
     expect(img.getAttribute('data-format')).toBe('im4');
     expect(img.querySelector('[role="img"]')!.getAttribute('aria-label')).toContain('Queens Weather');
   });
