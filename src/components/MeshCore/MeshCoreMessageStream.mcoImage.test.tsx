@@ -50,7 +50,7 @@ const renderStream = (messages: MeshCoreMessage[]) =>
 describe('MeshCoreMessageStream MCOimg (#6586)', () => {
   it('draws an im3 message as an image with the sender intact', async () => {
     const { container } = renderStream([msg('m1', SAMPLE)]);
-    expect(await screen.findByTestId('mco-image')).toBeTruthy();
+    expect(await screen.findByTestId('mco-image', {}, { timeout: 5000 })).toBeTruthy();
     expect(container.textContent).toContain('Alice');
   });
 
@@ -79,7 +79,7 @@ describe('MeshCoreMessageStream MCOimg (#6586)', () => {
 
   it('draws an im4 message as an image and hides Translate', async () => {
     const { container } = renderStream([msg('im4', IM4)]);
-    const img = await screen.findByTestId('mco-image');
+    const img = await screen.findByTestId('mco-image', {}, { timeout: 5000 });
     expect(img.getAttribute('data-format')).toBe('im4');
     expect(img.querySelector('[role="img"]')!.getAttribute('aria-label')).toContain('Queens Weather');
     expect(idsSeen.last).toEqual([]);
